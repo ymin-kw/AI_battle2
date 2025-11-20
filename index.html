@@ -2,6 +2,251 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <title>Live AI Tournament</title>
+    <style>
+        body { background: #111; color: white; font-family: 'Noto Sans KR', sans-serif; margin: 0; overflow-x: auto; padding: 20px; }
+        
+        /* 컨트롤 패널 */
+        .control-panel { position: fixed; top: 0; left: 0; width: 100%; background: rgba(0,0,0,0.9); padding: 10px; z-index: 100; display: flex; gap: 10px; align-items: center; border-bottom: 1px solid #333;}
+        input { padding: 8px; background: #333; border: 1px solid #555; color: white; width: 100px;}
+        button { padding: 8px 15px; background: #e91e63; color: white; border: none; cursor: pointer; font-weight: bold; border-radius: 4px;}
+        
+        /* 대진표 스타일 */
+        .bracket { display: flex; padding: 20px; margin-top: 60px; width: max-content; }
+        .round { display: flex; flex-direction: column; justify-content: space-around; margin-right: 50px; }
+        .round-name { text-align: center; font-weight: bold; color: gold; margin-bottom: 10px; font-size: 1.2em;}
+        
+        .match { 
+            width: 200px; background: #222; border: 1px solid #444; border-radius: 8px; 
+            padding: 8px; margin: 10px 0; cursor: pointer; position: relative; transition: 0.2s;
+        }
+        .match:hover { border-color: #fff; transform: scale(1.05); }
+        .match.done { border-color: gold; opacity: 0.8; }
+        
+        .player { display: flex; align-items: center; padding: 4px; font-size: 0.9em; height: 30px;}
+        .p-img { width: 30px; height: 30px; border-radius: 50%; margin-right: 8px; object-fit: cover; border: 1px solid #555; }
+        .win-text { color: gold; font-weight: bold; }
+        .lose-text { color: #666; text-decoration: line-through; }
+
+        /* 연결선 */
+        .match::after { content: ""; position: absolute; right: -25px; top: 50%; width: 25px; height: 2px; background: #444; }
+        .round:last-child .match::after { display: none; }
+
+        /* 🥊 [핵심] 대형 배틀 팝업 (Modal) 스타일 */
+        #modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 999; align-items: center; justify-content: center; }
+        .modal-box { background: #1a1a1a; width: 80%; max-width: 800px; padding: 30px; border-radius: 20px; border: 2px solid #444; text-align: center; position: relative; box-shadow: 0 0 50px rgba(0,0,0,0.8); }
+        
+        .vs-area { display: flex; justify-content: center; align-items: center; margin-bottom: 20px; gap: 20px; }
+        .big-p { width: 150px; height: 150px; border-radius: 15px; object-fit: cover; border: 4px solid #555; transition: 0.5s; }
+        .vs-text { font-size: 3em; font-weight: bold; font-style: italic; color: #ff4444; }
+        
+        .battle-log { background: #000; padding: 15px; border-radius: 10px; color: #0f0; font-family: monospace; text-align: left; min-height: 80px; white-space: pre-wrap; margin-bottom: 20px; line-height: 1.6; font-size: 1.1em;}
+        
+        .close-btn { background: gold; color: black; padding: 10px 40px; font-size: 1.2em; margin-top: 10px; }
+
+        /* 승리 효과 */
+        .winner-effect { border-color: gold; box-shadow: 0 0 30px gold; transform: scale(1.2); z-index: 10; }
+        .loser-effect { filter: grayscale(100%) brightness(0.3); transform: scale(0.8); }
+
+    </style>
+</head>
+<body>
+
+    <div class="control-panel">
+        <h3>🏆 AI Battle Royale</h3>
+        <input id="name" placeholder="이름">
+        <input id="skill" placeholder="기술">
+        <input type="file" id="imgInput" accept="image/*" style="width:180px;">
+        <button onclick="register()">참가 등록</button>
+        <span id="cnt" style="margin:0 10px; color:#0f0;">대기: 0</span>
+        <div style="flex-grow:1;"></div>
+        <button onclick="initTournament()" style="background:gold; color:black;">🔥 대진표 생성 (시작)</button>
+    </div>
+
+    <div id="bracket-area" class="bracket">
+        <div style="color:#666; margin: 100px;">
+            <h2>👈 상단 메뉴에서 등록 후 '대진표 생성'을 누르세요.</h2>
+        </div>
+    </div>
+
+    <div id="modal-overlay">
+        <div class="modal-box">
+            <h2 id="modal-title" style="color:gold; margin-bottom:20px;">BATTLE START!</h2>
+            
+            <div class="vs-area">
+                <div>
+                    <img id="p1-big-img" class="big-p" src="">
+                    <h3 id="p1-big-name">Player 1</h3>
+                </div>
+                
+                <div class="vs-text">VS</div>
+                
+                <div>
+                    <img id="p2-big-img" class="big-p" src="">
+                    <h3 id="p2-big-name">Player 2</h3>
+                </div>
+            </div>
+
+            <div id="modal-log" class="battle-log">
+                AI 심판이 판정 중입니다...
+            </div>
+
+            <button class="close-btn" onclick="closeModal()">닫기 (결과 반영)</button>
+        </div>
+    </div>
+
+    <script>
+        // 🚨 Replit 주소 입력 (슬래시 X)
+        const SERVER_URL = "https://2370d655-4aef-4419-aefc-53bb80ee4dd1-00-2rwi6mcfrqjc2.sisko.replit.dev";
+
+        let selectedImage = "";
+        document.getElementById('imgInput').addEventListener('change', function() {
+            const reader = new FileReader();
+            reader.onloadend = function() { selectedImage = reader.result; }
+            if(this.files[0]) reader.readAsDataURL(this.files[0]);
+        });
+
+        async function register() {
+            const n = document.getElementById('name').value;
+            const s = document.getElementById('skill').value;
+            // 이미지 없으면 모험가 아바타 자동
+            let img = selectedImage || `https://api.dicebear.com/9.x/adventurer/svg?seed=${n}`;
+            
+            if(!n) return alert("이름 입력!");
+            await fetch(`${SERVER_URL}/register`, {
+                method: 'POST', headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({name:n, skill:s, image:img})
+            });
+            alert("등록됨");
+            document.getElementById('name').value="";
+            updateCnt();
+        }
+
+        async function updateCnt() {
+            try {
+                const res = await fetch(`${SERVER_URL}/participants`);
+                const list = await res.json();
+                document.getElementById('cnt').innerText = `대기: ${list.length}`;
+            } catch(e){}
+        }
+        setInterval(updateCnt, 2000);
+
+        async function initTournament() {
+            if(!confirm("32강 대진표를 생성합니다. (부족하면 봇 채움)")) return;
+            const res = await fetch(`${SERVER_URL}/init_tournament`, {method:'POST'});
+            const data = await res.json();
+            renderBracket(data.state);
+        }
+
+        // 경기 클릭 -> 팝업 열기 -> 결과 가져오기
+        async function playMatch(rIdx, mIdx, p1Name, p1Img, p2Name, p2Img) {
+            // 1. 팝업 열기 및 초기화 (로딩 상태)
+            const overlay = document.getElementById('modal-overlay');
+            overlay.style.display = 'flex';
+            
+            document.getElementById('modal-title').innerText = "⚔️ 격돌! ⚔️";
+            document.getElementById('modal-log').innerText = "⏳ AI 심판이 두 캐릭터의 능력을 분석 중입니다...";
+            
+            // 이미지 세팅
+            const img1 = document.getElementById('p1-big-img');
+            const img2 = document.getElementById('p2-big-img');
+            img1.src = p1Img; img2.src = p2Img;
+            document.getElementById('p1-big-name').innerText = p1Name;
+            document.getElementById('p2-big-name').innerText = p2Name;
+            
+            // 효과 초기화
+            img1.className = "big-p";
+            img2.className = "big-p";
+
+            try {
+                // 2. 서버에 판정 요청
+                const res = await fetch(`${SERVER_URL}/play_match`, {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({round_index: rIdx, match_index: mIdx})
+                });
+                const data = await res.json();
+                const match = data.match;
+
+                // 3. 결과 연출
+                document.getElementById('modal-log').innerText = match.log;
+                document.getElementById('modal-title').innerText = `🏆 ${match.winner.name} 승리!`;
+
+                // 승자/패자 시각 효과
+                if (match.winner.name === p1Name) {
+                    img1.classList.add("winner-effect");
+                    img2.classList.add("loser-effect");
+                } else {
+                    img2.classList.add("winner-effect");
+                    img1.classList.add("loser-effect");
+                }
+                
+                // 백그라운드 데이터 갱신 (닫을 때 반영됨)
+                refreshState();
+
+            } catch(e) { alert("오류 발생"); closeModal(); }
+        }
+
+        function closeModal() {
+            document.getElementById('modal-overlay').style.display = 'none';
+        }
+
+        async function refreshState() {
+            const res = await fetch(`${SERVER_URL}/state`);
+            const state = await res.json();
+            renderBracket(state);
+        }
+
+        function renderBracket(state) {
+            const area = document.getElementById('bracket-area');
+            area.innerHTML = "";
+
+            state.rounds.forEach((round, rIdx) => {
+                const col = document.createElement('div');
+                col.className = 'round';
+                
+                const title = document.createElement('div');
+                title.className = 'round-name';
+                title.innerText = rIdx === 4 ? "👑 결승" : `${Math.pow(2, 5-rIdx)}강`;
+                col.appendChild(title);
+
+                round.forEach((match, mIdx) => {
+                    const box = document.createElement('div');
+                    box.className = `match ${match.winner ? 'done' : ''}`;
+                    
+                    // 선수 정보가 둘 다 있을 때만 클릭 가능
+                    if (!match.winner && match.p1 && match.p2) {
+                        box.onclick = () => playMatch(rIdx, mIdx, match.p1.name, match.p1.image, match.p2.name, match.p2.image);
+                        box.style.borderColor = "#0f0"; 
+                        box.title = "클릭하여 배틀 시작!";
+                    }
+
+                    const drawP = (p, isWinner) => {
+                        if (!p) return `<div class="player">???</div>`;
+                        const cls = isWinner ? "win-text" : (match.winner ? "lose-text" : "");
+                        return `<div class="player ${cls}">
+                                    <img src="${p.image}" class="p-img"> ${p.name}
+                                </div>`;
+                    };
+
+                    const isP1Win = match.winner && match.winner.name === match.p1.name;
+                    const isP2Win = match.winner && match.p2 && match.winner.name === match.p2.name;
+
+                    box.innerHTML = drawP(match.p1, isP1Win) + drawP(match.p2, isP2Win);
+                    col.appendChild(box);
+                });
+                area.appendChild(col);
+            });
+        }
+    </script>
+</body>
+</html>
+
+
+
+<!-- <!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
     <title>AI 배틀 로얄 (32강 대진표)</title>
     <style>
         body { background: #1a1a1a; color: white; font-family: 'Noto Sans KR', sans-serif; margin: 0; overflow-x: auto; }
@@ -191,4 +436,4 @@
         }
     </script>
 </body>
-</html>
+</html> -->
