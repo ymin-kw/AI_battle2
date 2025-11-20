@@ -188,7 +188,7 @@
             if(!confirm("32강 대진표를 생성합니다.")) return;
             const res = await fetch(`${SERVER_URL}/init_tournament`, {method:'POST'});
             const data = await res.json();
-            renderBracket(data.state);
+            renderBracket(data);
         }
 
         // 차트 객체 저장용
