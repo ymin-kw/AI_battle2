@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>AI 배틀 로얄 (32강 대진표)</title>
+    <style>
+        body { background: #1a1a1a; color: white; font-family: 'Noto Sans KR', sans-serif; margin: 0; overflow-x: auto; }
+        .header { text-align: center; padding: 20px; position: sticky; top: 0; background: #1a1a1a; z-index: 100; border-bottom: 1px solid #444; }
+        
+        /* 입력창 디자인 */
+        .input-group { display: inline-block; background: #333; padding: 10px; border-radius: 10px; }
+        input, textarea { background: #222; border: 1px solid #555; color: white; padding: 8px; border-radius: 4px; margin: 2px; width: 150px;}
+        textarea { width: 300px; height: 40px; vertical-align: middle; }
+        button { background: gold; border: none; padding: 8px 15px; font-weight: bold; cursor: pointer; border-radius: 4px; }
+        
+        /* 대진표 레이아웃 (Flexbox) */
+        .bracket-container { display: flex; padding: 40px; min-width: 1200px; justify-content: center; }
+        .round-column { display: flex; flex-direction: column; justify-content: space-around; margin: 0 20px; position: relative; }
+        .round-title { text-align: center; font-weight: bold; color: #aaa; margin-bottom: 20px; font-size: 1.2em; }
+        
+        /* 경기 박스 */
+        .match-box { 
+            width: 200px; background: #2a2a2a; border: 1px solid #444; border-radius: 8px; 
+            padding: 10px; margin: 10px 0; position: relative; transition: 0.3s;
+        }
+        .match-box:hover { border-color: gold; transform: scale(1.05); z-index: 10; }
+        .match-box::after { /* 연결선 */
+            content: ""; position: absolute; right: -22px; top: 50%; width: 20px; height: 2px; background: #555;
+        }
+        .round-column:last-child .match-box::after { display: none; } /* 결승전은 선 없음 */
+
+        .player-row { display: flex; align-items: center; margin: 4px 0; font-size: 0.9em; }
+        .p-img { width: 25px; height: 25px; border-radius: 50%; margin-right: 5px; border: 1px solid #555; }
+        .winner-row { color: gold; font-weight: bold; text-shadow: 0 0 5px rgba(255,215,0,0.5); }
+        .loser-row { color: #666; text-decoration: line-through; }
+        
+        /* 로딩/결과창 */
+        #overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 200; align-items: center; justify-content: center; flex-direction: column; }
+        #overlay-text { font-size: 2em; color: gold; margin-bottom: 20px; text-align: center; white-space: pre-wrap;}
+        .big-img { width: 200px; height: 200px; border-radius: 50%; border: 5px solid gold; box-shadow: 0 0 30px gold; }
+        .close-btn { margin-top: 30px; padding: 10px 30px; font-size: 1.2em; background: white; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h2>🏆 AI 배틀 로얄 (32강 토너먼트)</h2>
+        
+        <div class="input-group" id="reg-box">
+            <input type="text" id="name" placeholder="닉네임">
+            <input type="text" id="skill" placeholder="필살기 (짧게)">
+            <textarea id="detail" placeholder="설정/약점 (길게)"></textarea>
+            <input type="file" id="imgInput" accept="image/*" style="width:180px;">
+            <button onclick="register()">등록</button>
+        </div>
+        
+        <div style="margin-top:10px;">
+            <span id="status" style="color:#0f0; margin-right:20px;">대기실: 0명</span>
+            <button onclick="startTournament()" style="background:#ff4444; color:white;">🔥 대진표 생성 및 시작 (32명 자동 채움)</button>
+        </div>
+    </div>
+
+    <div class="bracket-container" id="bracket">
+        <div style="color:#666; margin-top:50px;">참가자가 등록되면 여기에 대진표가 나타납니다...</div>
+    </div>
+
+    <div id="overlay">
+        <div id="overlay-text"></div>
+        <div id="overlay-content"></div>
+        <button class="close-btn" onclick="closeOverlay()">닫기</button>
+    </div>
+
+    <script>
+        // 🚨 주소 입력 
+        const SERVER_URL = "https://2370d655-4aef-4419-aefc-53bb80ee4dd1-00-2rwi6mcfrqjc2.sisko.replit.dev";
+
+        let selectedImageBase64 = "";
+        document.getElementById('imgInput').addEventListener('change', function() {
+            const reader = new FileReader();
+            reader.onloadend = function() { selectedImageBase64 = reader.result; }
+            if(this.files[0]) reader.readAsDataURL(this.files[0]);
+        });
+
+        // 등록
+        async function register() {
+            const name = document.getElementById('name').value;
+            const skill = document.getElementById('skill').value;
+            const detail = document.getElementById('detail').value;
+            let img = selectedImageBase64 || `https://api.dicebear.com/9.x/adventurer/svg?seed=${name}`;
+
+            if(!name) return alert("이름을 입력하세요!");
+
+            try {
+                await fetch(`${SERVER_URL}/register`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({name, skill, skill_detail: detail, weakness: detail, image: img})
+                });
+                alert("등록 완료!");
+                document.getElementById('name').value = "";
+                updateCount();
+            } catch(e) { alert("등록 실패"); }
+        }
+
+        async function updateCount() {
+            try {
+                const res = await fetch(`${SERVER_URL}/participants`);
+                const list = await res.json();
+                document.getElementById('status').innerText = `대기실: ${list.length}명`;
+            } catch(e) {}
+        }
+        setInterval(updateCount, 2000);
+
+        // 토너먼트 시작 및 그리기
+        async function startTournament() {
+            const overlay = document.getElementById('overlay');
+            const oText = document.getElementById('overlay-text');
+            overlay.style.display = 'flex';
+            oText.innerText = "⏳ AI가 32명의 운명을 계산 중입니다...\n(빈자리는 봇으로 채워집니다)";
+            document.getElementById('overlay-content').innerHTML = "";
+
+            try {
+                const res = await fetch(`${SERVER_URL}/tournament`, { method: 'POST' });
+                const data = await res.json();
+                
+                renderBracket(data.history); // 대진표 그리기 함수 호출
+                
+                // 우승자 발표
+                oText.innerText = `👑 최종 우승: ${data.final_winner.name} 👑`;
+                document.getElementById('overlay-content').innerHTML = `
+                    <img src="${data.final_winner.image}" class="big-img">
+                    <p style="color:white; font-size:1.2em;">${data.final_winner.skill}</p>
+                `;
+
+            } catch(e) {
+                oText.innerText = "에러 발생! 서버 상태를 확인하세요.";
+            }
+        }
+
+        function closeOverlay() {
+            document.getElementById('overlay').style.display = 'none';
+        }
+
+        // [핵심] 대진표 그리기 함수
+        function renderBracket(history) {
+            const container = document.getElementById('bracket');
+            container.innerHTML = "";
+
+            history.forEach((round, rIndex) => {
+                const col = document.createElement('div');
+                col.className = 'round-column';
+                
+                // 라운드 이름 (32강, 16강...)
+                let roundName = "";
+                if (rIndex === 0) roundName = "32강";
+                else if (rIndex === 1) roundName = "16강";
+                else if (rIndex === 2) roundName = "8강";
+                else if (rIndex === 3) roundName = "4강";
+                else if (rIndex === 4) roundName = "결승";
+                
+                col.innerHTML = `<div class="round-title">${roundName}</div>`;
+
+                round.matches.forEach(m => {
+                    const box = document.createElement('div');
+                    box.className = 'match-box';
+                    
+                    // p1, p2 그리기
+                    const p1Class = m.winner === m.p1.name ? "winner-row" : "loser-row";
+                    const p2Class = m.winner === m.p2.name ? "winner-row" : "loser-row";
+                    
+                    box.innerHTML = `
+                        <div class="player-row ${p1Class}" title="${m.log}">
+                            <img src="${m.p1.image}" class="p-img">${m.p1.name}
+                        </div>
+                        <div class="player-row ${p2Class}" title="${m.log}">
+                            <img src="${m.p2.image}" class="p-img">${m.p2.name}
+                        </div>
+                    `;
+                    // 클릭하면 로그 보기
+                    box.onclick = () => alert(`[전투 로그]\n\n${m.log}\n\n👉승리요인: ${m.reason}`);
+                    col.appendChild(box);
+                });
+
+                container.appendChild(col);
+            });
+            
+            // 최종 우승자 컬럼 추가
+            const winnerCol = document.createElement('div');
+            winnerCol.className = 'round-column';
+            winnerCol.innerHTML = `<div class="round-title">우승</div><div class="match-box" style="border-color:gold; color:gold; font-weight:bold; text-align:center;">👑 CHAMP 👑</div>`;
+            container.appendChild(winnerCol);
+        }
+    </script>
+</body>
+</html>
