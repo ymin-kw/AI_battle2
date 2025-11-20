@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>AI Battle Royale - Main Stadium</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background: #0b0b15; color: white; font-family: 'Noto Sans KR', sans-serif; margin: 0; overflow-x: hidden; }
+        
+        /* 🔊 사운드 컨트롤 */
+        .sound-panel { position: fixed; bottom: 20px; right: 20px; z-index: 999; }
+        .sound-btn { background: #333; border: 1px solid #555; color: white; padding: 10px; border-radius: 50%; cursor: pointer; width: 50px; height: 50px; font-size: 1.2em; }
+        
+        /* 📺 상단 대기실 (뉴스 티커 스타일) */
+        .header { background: rgba(0,0,0,0.9); padding: 15px 30px; border-bottom: 2px solid #00f3ff; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 0 20px rgba(0, 243, 255, 0.2); }
+        .logo { font-size: 1.5em; font-weight: bold; font-style: italic; color: #00f3ff; text-shadow: 0 0 10px #00f3ff; }
+        
+        .marquee-container { flex-grow: 1; margin: 0 30px; background: #1a1a2e; border-radius: 5px; overflow: hidden; white-space: nowrap; padding: 10px; position: relative; }
+        .marquee-content { display: inline-block; color: #fff; font-weight: bold; animation: marquee 20s linear infinite; }
+        @keyframes marquee { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+        
+        .control-btn { padding: 10px 20px; font-weight: bold; border: none; cursor: pointer; border-radius: 5px; margin-left: 10px; font-size: 1em; transition: 0.2s; }
+        .btn-start { background: gold; color: black; box-shadow: 0 0 15px gold; }
+        .btn-reset { background: #ff4444; color: white; }
+        .btn-start:hover { transform: scale(1.05); }
+
+        /* 🏆 대진표 영역 */
+        .bracket-container { display: flex; justify-content: center; padding: 50px 20px; min-width: 1400px; margin-top: 20px; }
+        .round-col { display: flex; flex-direction: column; justify-content: space-around; margin: 0 15px; position: relative; }
+        .round-title { text-align: center; color: #888; font-weight: bold; margin-bottom: 20px; letter-spacing: 2px; }
+        
+        .match-card { 
+            width: 180px; background: #161623; border: 1px solid #333; border-radius: 8px; 
+            padding: 5px; margin: 5px 0; cursor: pointer; position: relative; transition: 0.3s;
+        }
+        .match-card:hover { border-color: #00f3ff; box-shadow: 0 0 15px rgba(0,243,255,0.3); transform: scale(1.05); z-index: 10; }
+        .match-card.active { border-color: #0f0; box-shadow: 0 0 10px #0f0; }
+        
+        /* 대진표 연결선 */
+        .match-card::after { content: ""; position: absolute; right: -32px; top: 50%; width: 32px; height: 2px; background: #333; }
+        .round-col:last-child .match-card::after { display: none; }
+
+        .p-row { display: flex; align-items: center; padding: 4px; font-size: 0.85em; height: 28px; border-bottom: 1px solid #222; }
+        .p-row:last-child { border-bottom: none; }
+        .p-img { width: 24px; height: 24px; border-radius: 50%; margin-right: 8px; object-fit: cover; background: #000; }
+        .winner { color: gold; font-weight: bold; text-shadow: 0 0 5px rgba(255,215,0,0.5); }
+        .loser { color: #555; text-decoration: line-through; }
+
+        /* 🥊 배틀/프로필 모달 (팝업) */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; backdrop-filter: blur(5px); align-items: center; justify-content: center; }
+        .modal-content { background: #1a1a2e; width: 900px; border: 2px solid #00f3ff; border-radius: 20px; padding: 40px; position: relative; box-shadow: 0 0 50px rgba(0,243,255,0.2); }
+        
+        .battle-stage { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .fighter-box { text-align: center; width: 30%; position: relative; }
+        .fighter-img { width: 180px; height: 180px; border-radius: 15px; border: 4px solid #555; object-fit: cover; transition: 0.5s; }
+        .fighter-name { font-size: 1.5em; font-weight: bold; margin-top: 10px; color: white; }
+        
+        .vs-badge { font-size: 4em; font-style: italic; font-weight: bold; color: #ff4444; text-shadow: 0 0 20px red; }
+        
+        /* 스탯 차트 */
+        .chart-container { width: 100%; height: 200px; margin-top: 10px; }
+        
+        .log-box { background: #000; color: #0f0; padding: 20px; border-radius: 10px; font-family: monospace; font-size: 1.1em; line-height: 1.6; min-height: 80px; border: 1px solid #333; text-align: left; white-space: pre-wrap; }
+        
+        .close-btn { position: absolute; top: 20px; right: 20px; background: none; border: none; color: #aaa; font-size: 2em; cursor: pointer; }
+        
+        /* 애니메이션 효과 */
+        .winner-fx { border-color: gold; box-shadow: 0 0 50px gold; transform: scale(1.1); z-index: 10; }
+        .loser-fx { filter: grayscale(100%) brightness(0.2); transform: scale(0.9); }
+        @keyframes shake { 0% { transform: translate(1px, 1px); } 100% { transform: translate(-1px, -2px); } }
+        .shake-fx { animation: shake 0.5s infinite; }
+
+        /* 상세정보 보기 (Scouting) */
+        .info-detail { font-size: 0.9em; color: #aaa; margin-top: 10px; text-align: left; background: #222; padding: 10px; border-radius: 5px;}
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="logo">🏆 AI Battle Arena</div>
+        
+        <div class="marquee-container">
+            <div id="marquee-text" class="marquee-content">대기 중... 학생들의 접속을 기다리고 있습니다...</div>
+        </div>
+        
+        <div style="display:flex; align-items:center;">
+            <span id="counter" style="font-weight:bold; color:gold; margin-right:20px;">Ready: 0</span>
+            <button onclick="initTournament()" class="control-btn btn-start">🔥 대회 시작</button>
+            <button onclick="resetServer()" class="control-btn btn-reset">🗑️ 리셋</button>
+        </div>
+    </div>
+
+    <div id="bracket-area" class="bracket-container">
+        <div style="margin-top:100px; color:#555; font-size:1.5em;">
+            상단 '대회 시작' 버튼을 누르면 대진표가 생성됩니다.
+        </div>
+    </div>
+
+    <div class="sound-panel">
+        <button class="sound-btn" onclick="toggleSound()" id="soundBtn">🔇</button>
+    </div>
+
+    <div id="battle-modal" class="modal-overlay">
+        <div class="modal-content">
+            <button class="close-btn" onclick="closeModal()">×</button>
+            <h2 id="modal-title" style="text-align:center; color:gold; margin-top:0;">MATCH START</h2>
+            
+            <div class="battle-stage">
+                <div class="fighter-box">
+                    <img id="p1-img" class="fighter-img" src="">
+                    <div id="p1-name" class="fighter-name">Player 1</div>
+                    <div class="chart-container"><canvas id="chart1"></canvas></div>
+                    <div id="p1-info" class="info-detail" style="display:none;"></div>
+                </div>
+                
+                <div class="vs-badge">VS</div>
+                
+                <div class="fighter-box">
+                    <img id="p2-img" class="fighter-img" src="">
+                    <div id="p2-name" class="fighter-name">Player 2</div>
+                    <div class="chart-container"><canvas id="chart2"></canvas></div>
+                    <div id="p2-info" class="info-detail" style="display:none;"></div>
+                </div>
+            </div>
+
+            <div id="battle-log" class="log-box">
+                AI 심판이 두 선수의 데이터를 분석하고 있습니다...
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 🚨 [필수] Replit 주소 입력 (맨 뒤 슬래시 제외)
+        const SERVER_URL = "https://여기에-주소를-붙여넣으세요";
+
+        // --- 사운드 시스템 ---
+        const audio = {
+            bgm: new Audio('https://opengameart.org/sites/default/files/heroic_demise_0.mp3'), // 무료 BGM 예시
+            hit: new Audio('https://opengameart.org/sites/default/files/punch.mp3'),
+            win: new Audio('https://opengameart.org/sites/default/files/mission_complete.mp3')
+        };
+        let isSoundOn = false;
+        audio.bgm.loop = true;
+        audio.bgm.volume = 0.3;
+
+        function toggleSound() {
+            isSoundOn = !isSoundOn;
+            const btn = document.getElementById('soundBtn');
+            if(isSoundOn) {
+                btn.innerText = "🔊";
+                audio.bgm.play().catch(e=>console.log("재생불가"));
+            } else {
+                btn.innerText = "🔇";
+                audio.bgm.pause();
+            }
+        }
+
+        function playSfx(type) {
+            if(!isSoundOn) return;
+            if(type === 'hit') audio.hit.play();
+            if(type === 'win') audio.win.play();
+        }
+
+        // --- 대기실 로직 ---
+        async function updateWaitingRoom() {
+            try {
+                const res = await fetch(`${SERVER_URL}/participants`);
+                const list = await res.json();
+                
+                document.getElementById('counter').innerText = `Ready: ${list.length}`;
+                
+                // 뉴스 티커 업데이트
+                const names = list.map(p => `[${p.name}]`).join(" ");
+                const ticker = document.getElementById('marquee-text');
+                ticker.innerText = names ? `현재 접속자: ${names}` : "대기 중... 학생들은 접속해주세요.";
+            } catch(e) {}
+        }
+        setInterval(updateWaitingRoom, 2000);
+
+        async function resetServer() {
+            if(!confirm("정말 초기화하시겠습니까?")) return;
+            await fetch(`${SERVER_URL}/reset`);
+            location.reload();
+        }
+
+        // --- 토너먼트 로직 ---
+        async function initTournament() {
+            if(!confirm("32강 대진표를 생성합니다.")) return;
+            const res = await fetch(`${SERVER_URL}/init_tournament`, {method:'POST'});
+            const data = await res.json();
+            renderBracket(data.state);
+        }
+
+        // 차트 객체 저장용
+        let chart1 = null;
+        let chart2 = null;
+
+        // 경기 실행 (팝업 열기)
+        async function playMatch(rIdx, mIdx, p1, p2) {
+            const modal = document.getElementById('battle-modal');
+            modal.style.display = 'flex';
+            
+            // 초기화
+            document.getElementById('modal-title').innerText = "⚔️ BATTLE START ⚔️";
+            document.getElementById('battle-log').innerText = "AI 심판이 데이터를 분석 중입니다...";
+            
+            // 이미지 & 텍스트 세팅
+            const img1 = document.getElementById('p1-img');
+            const img2 = document.getElementById('p2-img');
+            img1.src = p1.image; img2.src = p2.image;
+            img1.className = "fighter-img shake-fx"; img2.className = "fighter-img shake-fx"; // 흔들림 효과
+            
+            document.getElementById('p1-name').innerText = p1.name;
+            document.getElementById('p2-name').innerText = p2.name;
+
+            // 상세 정보 표시 (Scouting Report)
+            document.getElementById('p1-info').style.display = 'block';
+            document.getElementById('p2-info').style.display = 'block';
+            document.getElementById('p1-info').innerHTML = `<b>기술:</b> ${p1.skill}<br><b>설명:</b> ${p1.skill_detail}<br><b style='color:red'>약점:</b> ${p1.weakness}`;
+            document.getElementById('p2-info').innerHTML = `<b>기술:</b> ${p2.skill}<br><b>설명:</b> ${p2.skill_detail}<br><b style='color:red'>약점:</b> ${p2.weakness}`;
+
+            // 차트 그리기
+            drawStatChart('chart1', p1.stats, '#00f3ff');
+            drawStatChart('chart2', p2.stats, '#ff4444');
+
+            playSfx('hit'); // 시작 소리
+
+            // 서버 요청
+            try {
+                const res = await fetch(`${SERVER_URL}/play_match`, {
+                    method: 'POST', headers: {'Content-Type':'application/json'},
+                    body: JSON.stringify({r_idx: rIdx, m_idx: mIdx})
+                });
+                const data = await res.json();
+                
+                // 결과 연출 (2초 딜레이)
+                setTimeout(() => {
+                    const match = data.match;
+                    img1.classList.remove('shake-fx'); img2.classList.remove('shake-fx');
+                    
+                    document.getElementById('battle-log').innerHTML = `${match.log}\n\n<b style="color:orange">👉 승리 요인: ${match.reason}</b>`;
+                    document.getElementById('modal-title').innerText = `🏆 ${match.winner.name} WIN!`;
+                    
+                    if (match.winner.name === p1.name) {
+                        img1.classList.add('winner-fx'); img2.classList.add('loser-fx');
+                    } else {
+                        img2.classList.add('winner-fx'); img1.classList.add('loser-fx');
+                    }
+                    playSfx('win'); // 승리 소리
+                    
+                    // 백그라운드 갱신
+                    fetch(`${SERVER_URL}/state`).then(r=>r.json()).then(d=>renderBracket(d));
+
+                }, 2000);
+
+            } catch(e) { alert("오류"); closeModal(); }
+        }
+
+        function closeModal() {
+            document.getElementById('battle-modal').style.display = 'none';
+        }
+
+        // 차트 그리기 함수
+        function drawStatChart(canvasId, stats, color) {
+            const ctx = document.getElementById(canvasId).getContext('2d');
+            // 기존 차트 파괴 (중복 방지)
+            if(canvasId === 'chart1' && chart1) chart1.destroy();
+            if(canvasId === 'chart2' && chart2) chart2.destroy();
+
+            const config = {
+                type: 'radar',
+                data: {
+                    labels: ['PWR', 'DEF', 'SPD', 'INT', 'VAR'],
+                    datasets: [{
+                        label: 'Stats',
+                        data: [stats.PWR, stats.DEF, stats.SPD, stats.INT, stats.VAR],
+                        backgroundColor: color + '33', // 투명도
+                        borderColor: color,
+                        borderWidth: 2,
+                        pointBackgroundColor: '#fff'
+                    }]
+                },
+                options: {
+                    scales: { r: { min: 0, max: 100, ticks: {display:false}, grid: {color:'#444'}, pointLabels: {color:'#aaa', font:{size:10}} } },
+                    plugins: { legend: {display:false} },
+                    animation: { duration: 1000 }
+                }
+            };
+
+            if(canvasId === 'chart1') chart1 = new Chart(ctx, config);
+            else chart2 = new Chart(ctx, config);
+        }
+
+        // 대진표 렌더링
+        function renderBracket(state) {
+            const area = document.getElementById('bracket-area');
+            area.innerHTML = "";
+            if(!state.rounds) return;
+
+            state.rounds.forEach((round, rIdx) => {
+                const col = document.createElement('div');
+                col.className = 'round-col';
+                
+                const title = document.createElement('div');
+                title.className = 'round-title';
+                title.innerText = rIdx === 4 ? "WINNER" : `R${rIdx+1}`;
+                col.appendChild(title);
+
+                round.forEach((match, mIdx) => {
+                    const box = document.createElement('div');
+                    box.className = `match-card ${(!match.winner && match.p1 && match.p2) ? 'active' : ''}`;
+                    
+                    // 클릭 이벤트
+                    if (!match.winner && match.p1 && match.p2) {
+                        box.onclick = () => playMatch(rIdx, mIdx, match.p1, match.p2);
+                    } else if (match.winner) {
+                        box.style.opacity = "0.5"; // 끝난 경기 흐리게
+                    }
+
+                    const drawP = (p, isWinner) => {
+                        if (!p) return `<div class="p-row">?</div>`;
+                        const cls = isWinner ? "winner" : (match.winner ? "loser" : "");
+                        return `<div class="p-row ${cls}">
+                                    <img src="${p.image}" class="p-img"> ${p.name}
+                                </div>`;
+                    };
+
+                    const isP1 = match.winner && match.winner.name === match.p1.name;
+                    const isP2 = match.winner && match.p2 && match.winner.name === match.p2.name;
+
+                    box.innerHTML = drawP(match.p1, isP1) + drawP(match.p2, isP2);
+                    col.appendChild(box);
+                });
+                area.appendChild(col);
+            });
+        }
+    </script>
+</body>
+</html>
