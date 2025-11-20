@@ -11,8 +11,8 @@
         .sound-panel { position: fixed; bottom: 20px; right: 20px; z-index: 999; }
         .sound-btn { background: #333; border: 1px solid #555; color: white; padding: 10px; border-radius: 50%; cursor: pointer; width: 50px; height: 50px; font-size: 1.2em; }
         
-        /* 📺 상단 대기실 (뉴스 티커 스타일) */
-        .header { background: rgba(0,0,0,0.9); padding: 15px 30px; border-bottom: 2px solid #00f3ff; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 0 20px rgba(0, 243, 255, 0.2); }
+        /* 📺 상단 대기실 */
+        .header { background: rgba(0,0,0,0.95); padding: 15px 30px; border-bottom: 2px solid #00f3ff; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; box-shadow: 0 0 20px rgba(0, 243, 255, 0.2); }
         .logo { font-size: 1.5em; font-weight: bold; font-style: italic; color: #00f3ff; text-shadow: 0 0 10px #00f3ff; }
         
         .marquee-container { flex-grow: 1; margin: 0 30px; background: #1a1a2e; border-radius: 5px; overflow: hidden; white-space: nowrap; padding: 10px; position: relative; }
@@ -70,7 +70,7 @@
         @keyframes shake { 0% { transform: translate(1px, 1px); } 100% { transform: translate(-1px, -2px); } }
         .shake-fx { animation: shake 0.5s infinite; }
 
-        /* 상세정보 보기 (Scouting) */
+        /* 상세정보 보기 */
         .info-detail { font-size: 0.9em; color: #aaa; margin-top: 10px; text-align: left; background: #222; padding: 10px; border-radius: 5px;}
     </style>
 </head>
@@ -124,7 +124,7 @@
             </div>
 
             <div id="battle-log" class="log-box">
-                AI 심판이 두 선수의 데이터를 분석하고 있습니다...
+                AI 심판이 판정 중입니다...
             </div>
         </div>
     </div>
@@ -135,33 +135,22 @@
 
         // --- 사운드 시스템 ---
         const audio = {
-            bgm: new Audio('https://opengameart.org/sites/default/files/heroic_demise_0.mp3'), // 무료 BGM 예시
+            bgm: new Audio('https://opengameart.org/sites/default/files/heroic_demise_0.mp3'),
             hit: new Audio('https://opengameart.org/sites/default/files/punch.mp3'),
             win: new Audio('https://opengameart.org/sites/default/files/mission_complete.mp3')
         };
         let isSoundOn = false;
-        audio.bgm.loop = true;
-        audio.bgm.volume = 0.3;
+        audio.bgm.loop = true; audio.bgm.volume = 0.3;
 
         function toggleSound() {
             isSoundOn = !isSoundOn;
             const btn = document.getElementById('soundBtn');
-            if(isSoundOn) {
-                btn.innerText = "🔊";
-                audio.bgm.play().catch(e=>console.log("재생불가"));
-            } else {
-                btn.innerText = "🔇";
-                audio.bgm.pause();
-            }
+            if(isSoundOn) { btn.innerText = "🔊"; audio.bgm.play().catch(e=>{}); } 
+            else { btn.innerText = "🔇"; audio.bgm.pause(); }
         }
+        function playSfx(t) { if(isSoundOn) audio[t].play(); }
 
-        function playSfx(type) {
-            if(!isSoundOn) return;
-            if(type === 'hit') audio.hit.play();
-            if(type === 'win') audio.win.play();
-        }
-
-        // --- 대기실 로직 ---
+        // --- 대기실 업데이트 ---
         async function updateWaitingRoom() {
             try {
                 const res = await fetch(`${SERVER_URL}/participants`);
@@ -169,7 +158,6 @@
                 
                 document.getElementById('counter').innerText = `Ready: ${list.length}`;
                 
-                // 뉴스 티커 업데이트
                 const names = list.map(p => `[${p.name}]`).join(" ");
                 const ticker = document.getElementById('marquee-text');
                 ticker.innerText = names ? `현재 접속자: ${names}` : "대기 중... 학생들은 접속해주세요.";
@@ -183,19 +171,26 @@
             location.reload();
         }
 
-        // --- 토너먼트 로직 ---
+        // --- [수정됨] 토너먼트 시작 (여기가 핵심 수정) ---
         async function initTournament() {
             if(!confirm("32강 대진표를 생성합니다.")) return;
-            const res = await fetch(`${SERVER_URL}/init_tournament`, {method:'POST'});
-            const data = await res.json();
-            renderBracket(data);
+            
+            try {
+                const res = await fetch(`${SERVER_URL}/init_tournament`, {method:'POST'});
+                if (!res.ok) throw new Error("서버 응답 오류");
+
+                const data = await res.json();
+                // 수정 완료: data.state가 아니라 data를 바로 넣습니다!
+                renderBracket(data); 
+            } catch(e) {
+                alert("생성 실패! 주소를 확인하세요.");
+            }
         }
 
-        // 차트 객체 저장용
-        let chart1 = null;
-        let chart2 = null;
+        // 차트 변수
+        let chart1 = null, chart2 = null;
 
-        // 경기 실행 (팝업 열기)
+        // --- 경기 실행 ---
         async function playMatch(rIdx, mIdx, p1, p2) {
             const modal = document.getElementById('battle-modal');
             modal.style.display = 'flex';
@@ -204,28 +199,25 @@
             document.getElementById('modal-title').innerText = "⚔️ BATTLE START ⚔️";
             document.getElementById('battle-log').innerText = "AI 심판이 데이터를 분석 중입니다...";
             
-            // 이미지 & 텍스트 세팅
             const img1 = document.getElementById('p1-img');
             const img2 = document.getElementById('p2-img');
             img1.src = p1.image; img2.src = p2.image;
-            img1.className = "fighter-img shake-fx"; img2.className = "fighter-img shake-fx"; // 흔들림 효과
+            img1.className = "fighter-img shake-fx"; img2.className = "fighter-img shake-fx"; 
             
             document.getElementById('p1-name').innerText = p1.name;
             document.getElementById('p2-name').innerText = p2.name;
 
-            // 상세 정보 표시 (Scouting Report)
+            // 상세 정보
             document.getElementById('p1-info').style.display = 'block';
             document.getElementById('p2-info').style.display = 'block';
             document.getElementById('p1-info').innerHTML = `<b>기술:</b> ${p1.skill}<br><b>설명:</b> ${p1.skill_detail}<br><b style='color:red'>약점:</b> ${p1.weakness}`;
             document.getElementById('p2-info').innerHTML = `<b>기술:</b> ${p2.skill}<br><b>설명:</b> ${p2.skill_detail}<br><b style='color:red'>약점:</b> ${p2.weakness}`;
 
-            // 차트 그리기
+            // 차트
             drawStatChart('chart1', p1.stats, '#00f3ff');
             drawStatChart('chart2', p2.stats, '#ff4444');
+            playSfx('hit');
 
-            playSfx('hit'); // 시작 소리
-
-            // 서버 요청
             try {
                 const res = await fetch(`${SERVER_URL}/play_match`, {
                     method: 'POST', headers: {'Content-Type':'application/json'},
@@ -233,7 +225,6 @@
                 });
                 const data = await res.json();
                 
-                // 결과 연출 (2초 딜레이)
                 setTimeout(() => {
                     const match = data.match;
                     img1.classList.remove('shake-fx'); img2.classList.remove('shake-fx');
@@ -246,9 +237,9 @@
                     } else {
                         img2.classList.add('winner-fx'); img1.classList.add('loser-fx');
                     }
-                    playSfx('win'); // 승리 소리
+                    playSfx('win');
                     
-                    // 백그라운드 갱신
+                    // 대진표 갱신 (여기서도 data.state 대신 data를 씁니다)
                     fetch(`${SERVER_URL}/state`).then(r=>r.json()).then(d=>renderBracket(d));
 
                 }, 2000);
@@ -260,42 +251,34 @@
             document.getElementById('battle-modal').style.display = 'none';
         }
 
-        // 차트 그리기 함수
-        function drawStatChart(canvasId, stats, color) {
-            const ctx = document.getElementById(canvasId).getContext('2d');
-            // 기존 차트 파괴 (중복 방지)
-            if(canvasId === 'chart1' && chart1) chart1.destroy();
-            if(canvasId === 'chart2' && chart2) chart2.destroy();
+        // --- 유틸리티 함수들 ---
+        function drawStatChart(id, s, color) {
+            if(!s) s = {PWR:50, DEF:50, SPD:50, INT:50, VAR:50};
+            const ctx = document.getElementById(id).getContext('2d');
+            if(id==='chart1' && chart1) chart1.destroy();
+            if(id==='chart2' && chart2) chart2.destroy();
 
             const config = {
                 type: 'radar',
                 data: {
                     labels: ['PWR', 'DEF', 'SPD', 'INT', 'VAR'],
                     datasets: [{
-                        label: 'Stats',
-                        data: [stats.PWR, stats.DEF, stats.SPD, stats.INT, stats.VAR],
-                        backgroundColor: color + '33', // 투명도
-                        borderColor: color,
-                        borderWidth: 2,
-                        pointBackgroundColor: '#fff'
+                        label: 'Stats', data: [s.PWR, s.DEF, s.SPD, s.INT, s.VAR],
+                        backgroundColor: color + '33', borderColor: color, borderWidth: 2, pointRadius: 0
                     }]
                 },
                 options: {
                     scales: { r: { min: 0, max: 100, ticks: {display:false}, grid: {color:'#444'}, pointLabels: {color:'#aaa', font:{size:10}} } },
-                    plugins: { legend: {display:false} },
-                    animation: { duration: 1000 }
+                    plugins: { legend: {display:false} }, animation: { duration: 1000 }
                 }
             };
-
-            if(canvasId === 'chart1') chart1 = new Chart(ctx, config);
-            else chart2 = new Chart(ctx, config);
+            if(id==='chart1') chart1 = new Chart(ctx, config); else chart2 = new Chart(ctx, config);
         }
 
-        // 대진표 렌더링
         function renderBracket(state) {
             const area = document.getElementById('bracket-area');
             area.innerHTML = "";
-            if(!state.rounds) return;
+            if(!state || !state.rounds) return;
 
             state.rounds.forEach((round, rIdx) => {
                 const col = document.createElement('div');
@@ -310,25 +293,23 @@
                     const box = document.createElement('div');
                     box.className = `match-card ${(!match.winner && match.p1 && match.p2) ? 'active' : ''}`;
                     
-                    // 클릭 이벤트
                     if (!match.winner && match.p1 && match.p2) {
                         box.onclick = () => playMatch(rIdx, mIdx, match.p1, match.p2);
                     } else if (match.winner) {
-                        box.style.opacity = "0.5"; // 끝난 경기 흐리게
+                        box.style.opacity = "0.5";
                     }
 
-                    const drawP = (p, isWinner) => {
+                    const drawP = (p, isWin) => {
                         if (!p) return `<div class="p-row">?</div>`;
-                        const cls = isWinner ? "winner" : (match.winner ? "loser" : "");
-                        return `<div class="p-row ${cls}">
-                                    <img src="${p.image}" class="p-img"> ${p.name}
-                                </div>`;
+                        const cls = isWin ? "winner" : (match.winner ? "loser" : "");
+                        return `<div class="p-row ${cls}"><img src="${p.image}" class="p-img"> ${p.name}</div>`;
                     };
 
-                    const isP1 = match.winner && match.winner.name === match.p1.name;
-                    const isP2 = match.winner && match.p2 && match.winner.name === match.p2.name;
+                    const wName = match.winner ? match.winner.name : "";
+                    const p1Win = match.p1 && wName === match.p1.name;
+                    const p2Win = match.p2 && wName === match.p2.name;
 
-                    box.innerHTML = drawP(match.p1, isP1) + drawP(match.p2, isP2);
+                    box.innerHTML = drawP(match.p1, p1Win) + drawP(match.p2, p2Win);
                     col.appendChild(box);
                 });
                 area.appendChild(col);
